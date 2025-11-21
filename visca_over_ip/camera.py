@@ -655,4 +655,15 @@ class Camera:
             raise ViscaException(response)
         return mode
 
+    def get_focus_position(self) -> str:
+        # TODO: Not sure if working correctly
+        response = self._send_command('04 48', query=True)
+        return self._zero_padded_bytes_to_int(response[1:], signed=False)
+
+    def set_focus_position(self, position: float):
+        # TODO: Not sure if working correctly
+        position_int = round(position)
+        position_hex = f'{position_int:04x}'
+        self._send_command('04 48 ' + ''.join(['0' + char for char in position_hex]))
+
     # other inquiry commands

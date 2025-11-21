@@ -1,5 +1,6 @@
 import socket
 from typing import Optional, Tuple
+import logging
 
 from visca_over_ip.exceptions import ViscaException, NoQueryResponse
 
@@ -22,7 +23,7 @@ class Camera:
         self._location = (ip, port)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)  # for UDP stuff
         self._sock.bind(('', 0))
-        self._port = self._sock.getsockname()[1]  
+        self._port = self._sock.getsockname()[1]
         self._sock.settimeout(0.1)
 
         self.num_missed_responses = 0
@@ -32,7 +33,7 @@ class Camera:
         try:
             self._send_command('00 01')  # clear the camera's interface socket
         except ViscaException as exc:
-            print(f"Could not clear the camera's interface socket: {exc}")
+            logging.error(f"Could not clear the camera's interface socket: {exc}")
 
     def _send_command(self, command_hex: str, query=False) -> Optional[bytes]:
         """Constructs a message based ong the given payload, sends it to the camera,
@@ -55,6 +56,7 @@ class Camera:
             sequence_bytes = self.sequence_number.to_bytes(4, 'big')
             message = payload_type + payload_length + sequence_bytes + payload_bytes
 
+            logging.debug(f'Sending command: {message.hex(' ')}')
             self._sock.sendto(message, self._location)
 
             try:
@@ -80,6 +82,7 @@ class Camera:
         while True:
             try:
                 response = self._sock.recv(32)
+                logging.debug(f'socket response: {response.hex(' ')}')
                 response_sequence_number = int.from_bytes(response[4:8], 'big')
 
                 if response_sequence_number < self.sequence_number:
@@ -88,7 +91,7 @@ class Camera:
                     response_payload = response[8:]
                     if len(response_payload) > 2:
                         status_byte = response_payload[1]
-                        if status_byte >> 4 not in [5, 4]:
+                        if status_byte >> 4 not in [6, 5, 4]:
                             raise ViscaException(response_payload)
                         else:
                             return response_payload
@@ -227,13 +230,14 @@ class Camera:
             direction_hex = '3'
 
         self._send_command(f'04 07 {direction_hex}{speed_hex}')
-    
+
     def zoom_to(self, position: float):
         """Zooms to an absolute position
 
         :param position: 0-1, where 1 is zoomed all the way in
         """
-        position_int = round(position * 16384)
+        #position_int = round(position * 16384)
+        position_int = round(position)
         position_hex = f'{position_int:04x}'
         self._send_command('04 47 ' + ''.join(['0' + char for char in position_hex]))
 
@@ -445,7 +449,7 @@ class Camera:
 
     def increase_gain(self):
         self._send_command('04 0C 02')
-    
+
     def decrease_gain(self):
         self._send_command('04 0C 03')
 
@@ -482,10 +486,10 @@ class Camera:
 
     def increase_shutter(self):
         self._send_command('04 0A 02')
-    
+
     def decrease_shutter(self):
         self._send_command('04 0A 03')
-    
+
     def reset_shutter(self):
         self._send_command('04 0A 00')
 
@@ -506,7 +510,7 @@ class Camera:
             raise ValueError('The iris must be an integer from 0 to 17 inclusive')
 
         self._send_command('04 4B 00 00 ' + f'{iris:02x}')
-    
+
     def increase_iris(self):
         self._send_command('04 0B 02')
 
@@ -524,7 +528,7 @@ class Camera:
             raise ValueError('The brightness must be an integer from 0 to 255 inclusive')
 
         self._send_command('04 4D 00 00 ' + f'{brightness:02x}')
-    
+
     def increase_brightness(self):
         self._send_command('04 0D 02')
 
@@ -553,10 +557,10 @@ class Camera:
 
     def increase_aperture(self):
         self._send_command('04 02 02')
-    
+
     def decrease_aperture(self):
         self._send_command('04 02 03')
-    
+
     def reset_aperture(self):
         self._send_command('04 02 00')
 
@@ -629,8 +633,8 @@ class Camera:
     def get_pantilt_position(self) -> Tuple[int, int]:
         """:return: two signed integers representing the absolute pan and tilt positions respectively"""
         response = self._send_command('06 12', query=True)
-        pan_bytes = response[2:6]
-        tilt_bytes = response[6:10]
+        pan_bytes = response[1:5]
+        tilt_bytes = response[5:9]
         return self._zero_padded_bytes_to_int(pan_bytes), self._zero_padded_bytes_to_int(tilt_bytes)
 
     def get_zoom_position(self) -> int:
